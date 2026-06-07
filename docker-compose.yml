@@ -1,0 +1,76 @@
+# Orchestration for the isolated, secure execution of the technical test.
+#
+# Security model ("protect my data and integrity"):
+#   * Each image is built from a clean sub-folder context (./michell-api-test
+#     or ./security). The original project's backdoor code is NEVER copied in.
+#   * No host volumes are mounted, so the container cannot read host files.
+#   * No host environment variables are forwarded (no env_file, no `environment`
+#     pointing at host secrets). process.env inside the container is empty of
+#     anything sensitive.
+#   * Every service drops all Linux capabilities, forbids privilege escalation,
+#     and runs with a read-only root filesystem (a small tmpfs covers /tmp).
+#
+# Usage:
+#   docker compose run --rm tests          # unit + integration tests
+#   docker compose run --rm demo           # console demonstration
+#   docker compose up api                  # long-running API on :5050
+#   docker compose run --rm c2-observer    # defensive C2 observation
+
+name: estokkyam-michell-test
+
+x-hardening: &hardening
+  read_only: true
+  tmpfs:
+    - /tmp
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  restart: "no"
+
+services:
+  # The new API, running as a server on port 5050.
+  api:
+    <<: *hardening
+    build: ./michell-api-test
+    image: michell-api-test:latest
+    container_name: michell-api-test
+    command: ["node", "server.js"]
+    environment:
+      NODE_ENV: production
+      PORT: "5050"
+    ports:
+      - "5050:5050"
+
+  # Unit + integration tests (TDD). Integration tests hit live public RPCs.
+  tests:
+    <<: *hardening
+    build: ./michell-api-test
+    image: michell-api-test:latest
+    command: ["npm", "test"]
+    environment:
+      NODE_ENV: production
+
+  # Console demonstration: boots the API and queries real EstokkYam contracts.
+  demo:
+    <<: *hardening
+    build: ./michell-api-test
+    image: michell-api-test:latest
+    command: ["node", "demo.js"]
+    environment:
+      NODE_ENV: production
+
+  # Defensive, non-participating observation of the backdoor's C2 endpoint.
+  # Sends no environment and never executes the response.
+  c2-observer:
+    <<: *hardening
+    build: ./security
+    image: c2-observer:latest
+    command: ["node", "observe-c2.js"]
+
+  # Passive infrastructure OSINT for abuse / law-enforcement reporting.
+  # Queries public DNS/WHOIS/ipinfo only — never contacts the attacker servers.
+  recon:
+    <<: *hardening
+    build: ./security/recon
+    image: estokkyam-recon:latest

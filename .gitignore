@@ -1,0 +1,8 @@
+node_modules
+
+.idea/
+
+# Local-only awareness / process artifacts — kept out of the public repo
+LINKEDIN_POSTS.md
+VIDEO_SCRIPT.md
+ALESSIO_RESPONSE.md
